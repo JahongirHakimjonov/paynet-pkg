@@ -1,3 +1,11 @@
+<h1 align="center">Paynet PKG</h1>
+
+<p align="center">
+  <a href="https://t.me/+lO97J78xBj45MzBi">
+    <img src="https://img.shields.io/badge/Support%20Group-blue?logo=telegram&logoColor=white" alt="Support Group on Telegram"/>
+  </a>
+</p>
+
 
 ## Installation
 
