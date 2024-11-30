@@ -1,4 +1,4 @@
-<h1 align="center">Payme PKG</h1>
+<h1 align="center">Paynet PKG</h1>
 
 <p align="center">
   <a href="https://t.me/+lO97J78xBj45MzBi">
