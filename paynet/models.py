@@ -4,6 +4,7 @@ from django.db import models
 class PaynetTransaction(models.Model):
     """
     Represents a transaction made by a user on a specific service.
+    
     """
     CREATED = 0
     SUCCESSFUL = 1

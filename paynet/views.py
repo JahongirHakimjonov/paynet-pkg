@@ -178,19 +178,21 @@ class PaynetCallbackAPIView(APIView):
                 transaction_id=serializer.validated_data['transactionId'],
                 service_id=serializer.validated_data['serviceId']
             )
-            return Response({
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
-                    "transactionState": transaction.status,
-                    "timestamp": transaction.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
-                    "providerTrnId": transaction.id
-                }
-            })
+
         except Transaction.DoesNotExist as exc:
             raise exceptions.TransactionNotFound(
                 rpc_id=rpc_id, exc=exc
             ) from exc
+
+        return Response({
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "result": {
+                "transactionState": transaction.status,
+                "timestamp": transaction.updated_at.strftime('%Y-%m-%d %H:%M:%S'), # noqa
+                "providerTrnId": transaction.id
+            }
+        })
 
     def cancel_transaction(self, params, rpc_id):
         """
@@ -205,33 +207,34 @@ class PaynetCallbackAPIView(APIView):
                 service_id=serializer.validated_data['serviceId']
             )
 
-            if transaction.status == Transaction.CANCELLED:
-                raise exceptions.TransactionAlreadyCancelled(
-                    rpc_id=rpc_id
-                )
-
-            if not self.check_balance(transaction.amount):
-                raise exceptions.InsufficientFunds()
-
-            transaction.status = Transaction.CANCELLED
-            transaction.save()
-
-            # callback cancelled transaction event
-            self.cancelled_payment(params)
-
-            return Response({
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
-                    "providerTrnId": transaction.id,
-                    "timestamp": transaction.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
-                    "transactionState": Transaction.CANCELLED
-                }
-            })
         except Transaction.DoesNotExist as exc:
             raise exceptions.TransactionNotFound(
                 rpc_id=rpc_id, exc=exc
             ) from exc
+
+        if transaction.status == Transaction.CANCELLED:
+            raise exceptions.TransactionAlreadyCancelled(
+                rpc_id=rpc_id
+            )
+
+        if not self.check_balance(transaction.amount):
+            raise exceptions.InsufficientFunds()
+
+        transaction.status = Transaction.CANCELLED
+        transaction.save()
+
+        # callback cancelled transaction event
+        self.cancelled_payment(params)
+
+        return Response({
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "result": {
+                "providerTrnId": transaction.id,
+                "timestamp": transaction.updated_at.strftime('%Y-%m-%d %H:%M:%S'), # noqa
+                "transactionState": Transaction.CANCELLED
+            }
+        })
 
     def check_balance(self, amount) -> bool:
         """
@@ -281,7 +284,8 @@ class PaynetCallbackAPIView(APIView):
         if getattr(settings, 'PAYNET_ACCOUNT_INFO_FIELDS', None):
             info_fields = settings.PAYNET_ACCOUNT_INFO_FIELDS
 
-        account = AccountModel.objects.filter(id=account_id).values(*info_fields)
+        account = AccountModel.objects\
+            .filter(id=account_id).values(*info_fields)
 
         if not account:
             raise exceptions.ClientNotFound(rpc_id=rpc_id)
