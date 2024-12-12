@@ -9,7 +9,7 @@ keywords = "paynet, paynet-merchant, paynet-pkg, paynet-api, paynet-python-integ
 
 setup(
     name='paynet-pkg',
-    version='0.1',
+    version='0.3',
     license='MIT',
     author="Muhammadali Akbarov",
     author_email='muhammadali17abc@gmail.com',
