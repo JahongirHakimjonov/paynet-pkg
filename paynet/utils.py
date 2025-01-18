@@ -1,6 +1,7 @@
 """
 the payment app utilities
 """
+
 from django.conf import settings
 
 
@@ -17,7 +18,9 @@ def get_admin_model(name):
     """
     if name in settings.INSTALLED_APPS:
         from unfold.admin import ModelAdmin
+
         return ModelAdmin
 
     from django.contrib.admin import ModelAdmin
+
     return ModelAdmin

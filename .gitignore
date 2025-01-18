@@ -3,3 +3,4 @@ __pycache__/
 
 dist/
 paynet_pkg.egg-info/
+.idea/

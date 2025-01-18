@@ -32,6 +32,7 @@ Paynet configuration settings.py
 PAYNET_USERNAME = "your-paynet-username"
 PAYNET_PASSWORD = "your-paynet-password"
 PAYNET_ACCOUNT_FIELD = "order_id"
+PAYNET_ACCOUNT_INFO_FIELDS = ("id", "amount") # this is optional (default is None)
 PAYNET_ACCOUNT_MODEL = "order.models.Order"
 ```
 

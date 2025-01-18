@@ -1,23 +1,20 @@
 import base64
-
 from datetime import datetime
 
 from django.conf import settings
 from django.utils.module_loading import import_string
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from paynet import exceptions
 from paynet.exceptions import whitelist_errors
 from paynet.models import PaynetTransaction as Transaction
-from paynet.serializers import GetStatementSerializer
+from paynet.serializers import CancelTransactionSerializer
 from paynet.serializers import ChangePasswordSerializer
 from paynet.serializers import CheckTransactionSerializer
-from paynet.serializers import CancelTransactionSerializer
+from paynet.serializers import GetStatementSerializer
 from paynet.serializers import PerformTransactionSerializer
-
 
 AccountModel = import_string(settings.PAYNET_ACCOUNT_MODEL)
 
@@ -27,19 +24,27 @@ class PaynetCallbackAPIView(APIView):
     """
     API endpoint for handling incoming paynet webhooks.
     """
+
     authentication_classes = ()
-    allowed_services = [1,]
+    allowed_services = [
+        1,
+    ]
 
     def post(self, request):
         """
         Entry point for handling incoming paynet requests.
         """
         data = request.data
-        creds = request.headers.get('Authorization')
+        creds = request.headers.get("Authorization")
 
-        rpc_id = data['id']
-        method = data['method']
-        params = data['params']
+        # validate the request
+        required_keys = ["id", "method", "params"]
+        if not all(key in data for key in required_keys):
+            raise exceptions.InvalidRPCRequest(rpc_id=None)
+
+        rpc_id = data["id"]
+        method = data["method"]
+        params = data["params"]
 
         if not self.authenticate_request(creds):
             raise exceptions.InvalidLoginOrPassword(rpc_id=rpc_id)
@@ -47,7 +52,7 @@ class PaynetCallbackAPIView(APIView):
         if not self.validate_request_format(data):
             raise exceptions.InvalidRPCRequest(rpc_id=rpc_id)
 
-        service_id = params.get('serviceId')
+        service_id = params.get("serviceId")
         if not self.is_service_enabled(service_id):
             raise exceptions.ServiceTemporarilyUnavailable(rpc_id=rpc_id)
 
@@ -58,16 +63,10 @@ class PaynetCallbackAPIView(APIView):
             raise exc
 
         except ValidationError as exc:
-            raise exceptions.MissingRPCParameters(
-                rpc_id=rpc_id,
-                exc=str(exc)
-            ) from exc
+            raise exceptions.MissingRPCParameters(rpc_id=rpc_id, exc=str(exc)) from exc
 
         except Exception as exc:
-            raise exceptions.InternalSystemError(
-                rpc_id=rpc_id,
-                exc=str(exc)
-            ) from exc
+            raise exceptions.InternalSystemError(rpc_id=rpc_id, exc=str(exc)) from exc
 
     def authenticate_request(self, creds):
         """
@@ -79,16 +78,19 @@ class PaynetCallbackAPIView(APIView):
         Returns:
             bool: True if authentication is successful, False otherwise.
         """
-        if not creds or not creds.startswith('Basic '):
+        if not creds or not creds.startswith("Basic "):
             return False
 
         try:
             encoded_creds = creds[6:]
             decoded_bytes = base64.b64decode(encoded_creds)
-            decoded_string = decoded_bytes.decode('utf-8')
-            username, password = decoded_string.split(':', 1)
+            decoded_string = decoded_bytes.decode("utf-8")
+            username, password = decoded_string.split(":", 1)
 
-            return username == settings.PAYNET_USERNAME and password == settings.PAYNET_PASSWORD
+            return (
+                username == settings.PAYNET_USERNAME
+                and password == settings.PAYNET_PASSWORD
+            )
 
         except (ValueError, base64.binascii.Error):
             return False
@@ -125,10 +127,7 @@ class PaynetCallbackAPIView(APIView):
 
         if method not in methods:
             exc = f"method {method} is not supported"
-            raise exceptions.MethodNotFound(
-                rpc_id=rpc_id,
-                exc=exc
-            )
+            raise exceptions.MethodNotFound(rpc_id=rpc_id, exc=exc)
 
         return methods[method](params, rpc_id)
 
@@ -140,13 +139,15 @@ class PaynetCallbackAPIView(APIView):
         serializer.is_valid(raise_exception=True)
 
         transaction, created = Transaction.objects.get_or_create(
-            transaction_id=serializer.validated_data['transactionId'],
+            transaction_id=serializer.validated_data["transactionId"],
             defaults={
-                'service_id': serializer.validated_data['serviceId'],
-                'account_id': serializer.validated_data['fields'][settings.PAYNET_ACCOUNT_FIELD],
-                'amount': serializer.validated_data['amount'],
-                'status': Transaction.SUCCESSFUL
-            }
+                "service_id": serializer.validated_data["serviceId"],
+                "account_id": serializer.validated_data["fields"][
+                    settings.PAYNET_ACCOUNT_FIELD
+                ],
+                "amount": serializer.validated_data["amount"],
+                "status": Transaction.SUCCESSFUL,
+            },
         )
         if not created:
             raise exceptions.TransactionAlreadyExists(rpc_id=rpc_id)
@@ -154,17 +155,17 @@ class PaynetCallbackAPIView(APIView):
         # callback successfully event
         self.successfully_payment(params)
 
-        return Response({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "result": {
-                "providerTrnId": transaction.id,
-                "timestamp": transaction.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                "fields": {
-                    settings.PAYNET_ACCOUNT_FIELD: transaction.account_id
-                }
+        return Response(
+            {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "providerTrnId": transaction.id,
+                    "timestamp": transaction.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "fields": {settings.PAYNET_ACCOUNT_FIELD: transaction.account_id},
+                },
             }
-        })
+        )
 
     def check_transaction(self, params, rpc_id):
         """
@@ -175,24 +176,26 @@ class PaynetCallbackAPIView(APIView):
 
         try:
             transaction = Transaction.objects.get(
-                transaction_id=serializer.validated_data['transactionId'],
-                service_id=serializer.validated_data['serviceId']
+                transaction_id=serializer.validated_data["transactionId"],
+                service_id=serializer.validated_data["serviceId"],
             )
 
         except Transaction.DoesNotExist as exc:
-            raise exceptions.TransactionNotFound(
-                rpc_id=rpc_id, exc=exc
-            ) from exc
+            raise exceptions.TransactionNotFound(rpc_id=rpc_id, exc=exc) from exc
 
-        return Response({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "result": {
-                "transactionState": transaction.status,
-                "timestamp": transaction.updated_at.strftime('%Y-%m-%d %H:%M:%S'), # noqa
-                "providerTrnId": transaction.id
+        return Response(
+            {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "transactionState": transaction.status,
+                    "timestamp": transaction.updated_at.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),  # noqa
+                    "providerTrnId": transaction.id,
+                },
             }
-        })
+        )
 
     def cancel_transaction(self, params, rpc_id):
         """
@@ -203,19 +206,15 @@ class PaynetCallbackAPIView(APIView):
 
         try:
             transaction = Transaction.objects.get(
-                transaction_id=serializer.validated_data['transactionId'],
-                service_id=serializer.validated_data['serviceId']
+                transaction_id=serializer.validated_data["transactionId"],
+                service_id=serializer.validated_data["serviceId"],
             )
 
         except Transaction.DoesNotExist as exc:
-            raise exceptions.TransactionNotFound(
-                rpc_id=rpc_id, exc=exc
-            ) from exc
+            raise exceptions.TransactionNotFound(rpc_id=rpc_id, exc=exc) from exc
 
         if transaction.status == Transaction.CANCELLED:
-            raise exceptions.TransactionAlreadyCancelled(
-                rpc_id=rpc_id
-            )
+            raise exceptions.TransactionAlreadyCancelled(rpc_id=rpc_id)
 
         if not self.check_balance(transaction.amount):
             raise exceptions.InsufficientFunds()
@@ -226,15 +225,19 @@ class PaynetCallbackAPIView(APIView):
         # callback cancelled transaction event
         self.cancelled_payment(params)
 
-        return Response({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "result": {
-                "providerTrnId": transaction.id,
-                "timestamp": transaction.updated_at.strftime('%Y-%m-%d %H:%M:%S'), # noqa
-                "transactionState": Transaction.CANCELLED
+        return Response(
+            {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "providerTrnId": transaction.id,
+                    "timestamp": transaction.updated_at.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),  # noqa
+                    "transactionState": Transaction.CANCELLED,
+                },
             }
-        })
+        )
 
     def check_balance(self, amount) -> bool:
         """
@@ -251,11 +254,11 @@ class PaynetCallbackAPIView(APIView):
         serializer.is_valid(raise_exception=True)
 
         transactions = Transaction.objects.filter(
-            service_id=serializer.validated_data['serviceId'],
+            service_id=serializer.validated_data["serviceId"],
             created_at__range=[
-                serializer.validated_data['dateFrom'],
-                serializer.validated_data['dateTo']
-            ]
+                serializer.validated_data["dateFrom"],
+                serializer.validated_data["dateTo"],
+            ],
         ).exclude(status=Transaction.CANCELLED)
 
         statements = [
@@ -263,46 +266,43 @@ class PaynetCallbackAPIView(APIView):
                 "amount": tx.amount,
                 "providerTrnId": tx.id,
                 "transactionId": tx.transaction_id,
-                "timestamp": tx.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                "timestamp": tx.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             }
             for tx in transactions
         ]
 
-        return Response({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "result": {"statements": statements}
-        })
+        return Response(
+            {"jsonrpc": "2.0", "id": rpc_id, "result": {"statements": statements}}
+        )
 
     def get_information(self, params, rpc_id):
         """
         get information method process
         """
         info_fields = ("id",)
-        account_id = params['fields'][settings.PAYNET_ACCOUNT_FIELD]
+        account_id = params["fields"][settings.PAYNET_ACCOUNT_FIELD]
 
-        if getattr(settings, 'PAYNET_ACCOUNT_INFO_FIELDS', None):
+        if getattr(settings, "PAYNET_ACCOUNT_INFO_FIELDS", None):
             info_fields = settings.PAYNET_ACCOUNT_INFO_FIELDS
 
-        account = AccountModel.objects\
-            .filter(id=account_id).values(*info_fields)
+        account = AccountModel.objects.filter(id=account_id).values(*info_fields)
 
         if not account:
             raise exceptions.ClientNotFound(rpc_id=rpc_id)
 
         account = account.first()
 
-        return Response({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "result": {
-                "status": Transaction.CREATED,
-                "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                "fields": {
-                    "id": account
-                }
+        return Response(
+            {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "status": Transaction.CREATED,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "fields": account,
+                },
             }
-        })
+        )
 
     def change_password(self, params, rpc_id):
         """
@@ -310,11 +310,7 @@ class PaynetCallbackAPIView(APIView):
         """
         serializer = ChangePasswordSerializer(data=params)
         serializer.is_valid(raise_exception=True)
-        return Response({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "result": "success"
-        })
+        return Response({"jsonrpc": "2.0", "id": rpc_id, "result": "success"})
 
     def successfully_payment(self, params):
         """
