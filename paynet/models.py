@@ -4,17 +4,18 @@ from django.db import models
 class PaynetTransaction(models.Model):
     """
     Represents a transaction made by a user on a specific service.
-    
+
     """
+
     CREATED = 0
     SUCCESSFUL = 1
     CANCELLED = 2
     NOT_FOUND = 3
 
     STATUS_CHOICES = [
-        (SUCCESSFUL, 'Successfully completed'),
-        (CANCELLED, 'Cancelled transaction'),
-        (NOT_FOUND, 'Transaction not found'),
+        (SUCCESSFUL, "Successfully completed"),
+        (CANCELLED, "Cancelled transaction"),
+        (NOT_FOUND, "Transaction not found"),
     ]
     amount = models.IntegerField()
     account_id = models.BigIntegerField()
